@@ -1,0 +1,17 @@
+# docker/Dockerfile.watcher
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    requests==2.31.0 \
+    qdrant-client==1.7.0 \
+    watchdog==3.0.0
+
+# Copy file watcher
+COPY file_watcher/watcher.py /app/watcher.py
+
+# Run the watcher
+CMD ["python", "watcher.py"]

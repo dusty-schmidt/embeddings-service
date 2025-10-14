@@ -1,0 +1,118 @@
+# docker/docker-compose.yml
+
+version: '3.8'
+
+services:
+  # Embedding Service API
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: embedding-service
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_PORT=8000
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - API_KEYS=${API_KEYS:-dev-key-123,dev-key-456}
+      - ADMIN_KEYS=${ADMIN_KEYS:-admin-key-123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_ENABLED=true
+      - CACHE_TTL=86400
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_DEFAULT_MODEL=nomic-embed-text
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - DEFAULT_PROVIDER=ollama
+      - FALLBACK_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION=knowledge_base
+    depends_on:
+      - redis
+      - ollama
+      - qdrant
+    restart: unless-stopped
+    networks:
+      - embedding-network
+    volumes:
+      - ../knowledge:/app/knowledge
+
+  # File Watcher Service
+  file-watcher:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.watcher
+    container_name: file-watcher
+    environment:
+      - EMBEDDING_SERVICE_URL=http://api:8000
+      - API_KEY=${API_KEYS:-dev-key-123}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION=knowledge_base
+      - WATCH_DIRECTORY=/watch
+      - POLL_INTERVAL=5
+    depends_on:
+      - api
+      - qdrant
+    restart: unless-stopped
+    networks:
+      - embedding-network
+    volumes:
+      - ../knowledge:/watch
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: embedding-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - embedding-network
+
+  # Ollama for local embeddings
+  ollama:
+    image: ollama/ollama:latest
+    container_name: embedding-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - embedding-network
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: embedding-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    restart: unless-stopped
+    networks:
+      - embedding-network
+
+volumes:
+  redis-data:
+    driver: local
+  ollama-data:
+    driver: local
+  qdrant-data:
+    driver: local
+
+networks:
+  embedding-network:
+    driver: bridge
